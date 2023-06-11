@@ -1,6 +1,8 @@
 import { createServer } from "http";
 import { readFile, readdir } from "fs/promises";
 import sanitizeFilename from "sanitize-filename";
+import ReactMarkdown from "react-markdown";
+import Jimp from "jimp";
 
 // This is a server to host data-local resources like databases and RSC.
 
@@ -33,13 +35,30 @@ async function BlogIndexPage() {
   );
   return (
     <section>
-      <h1>Welcome to my blog</h1>
-      <div>
-        {postSlugs.map((slug) => (
-          <Post key={slug} slug={slug} />
-        ))}
-      </div>
+      <>
+        <h1>Welcome to my blog</h1>
+        <div>
+          {postSlugs.map((slug) => (
+            <Post key={slug} slug={slug} />
+          ))}
+        </div>
+      </>
     </section>
+  );
+}
+
+async function ImageComponent({ node, ...props }) {
+  const readedImage = await Jimp.read(props.src);
+  const imageBase64 = await readedImage.getBase64Async(Jimp.MIME_PNG);
+
+  return (
+    <div>
+      <img {...props} src={imageBase64} />
+      <p>
+        Measures: <br /> Width: {readedImage.getWidth()} <br /> Height:{" "}
+        {readedImage.getHeight()}
+      </p>
+    </div>
   );
 }
 
@@ -50,7 +69,7 @@ function BlogPostPage({ postSlug }) {
 async function Post({ slug }) {
   let content;
   try {
-    content = await readFile("./posts/" + slug + ".txt", "utf8");
+    content = await readFile("./posts/" + slug + ".md", "utf8");
   } catch (err) {
     throwNotFound(err);
   }
@@ -59,16 +78,35 @@ async function Post({ slug }) {
       <h2>
         <a href={"/" + slug}>{slug}</a>
       </h2>
-      <article>{content}</article>
+      <ReactMarkdown components={{ img: ImageComponent }}>
+        {content}
+      </ReactMarkdown>
     </section>
   );
 }
 
 function BlogLayout({ children }) {
   const author = "Jae Doe";
+  const BACKGROUND_COLORS = [
+    "#EAF2E3",
+    "#61E8E1",
+    "#F25757",
+    "#F2E863",
+    "#F2CD60",
+  ];
+
+  const randomColor = Math.ceil(Number(Math.random()) * 5);
+
   return (
     <html>
-      <body>
+      <body
+        style={{
+          backgroundColor: BACKGROUND_COLORS[randomColor],
+          transitionProperty: "background-color",
+          transitionDuration: "1s",
+          transitionTimingFunction: "linear",
+        }}
+      >
         <nav>
           <a href="/">Home</a>
           <hr />
@@ -140,7 +178,16 @@ async function renderJSXToClientJSX(jsx) {
         const props = jsx.props;
         const returnedJsx = await Component(props);
         return renderJSXToClientJSX(returnedJsx);
-      } else throw new Error("Not implemented.");
+      } else if (jsx.type === Symbol.for("react.fragment")) {
+        if (
+          typeof jsx.props === "object" &&
+          Array.isArray(jsx.props.children)
+        ) {
+          return renderJSXToClientJSX(jsx.props.children);
+        } else throw new Error("Not implemented");
+      } else {
+        throw new Error("Not implemented");
+      }
     } else {
       return Object.fromEntries(
         await Promise.all(
